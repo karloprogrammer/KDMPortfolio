@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Manila Times Market Overview Table Generator</title>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
+<style>
+/* --- Page Design & Theme --- */
+:root {
+  --bg-dark: #121212;
+  --card-dark: #1e1e1e;
+  --text-main: #e0e0e0;
+  --border-color: #333;
+  --input-bg: #121212;
+  --table-bg: #252525;
+  --table-text: #fff;
+  --accent-blue: #2f6fa5;
+  --accent-red: #d32f2f;
+  --accent-green: #2e7d32;
+  --accent-orange: #f39c12;
+}
+
+body.light-mode {
+  --bg-dark: #f0f2f5;
+  --card-dark: #ffffff;
+  --text-main: #333333;
+  --border-color: #cccccc;
+  --input-bg: #ffffff;
+  --table-bg: #ffffff;
+  --table-text: #000;
+}
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: var(--bg-dark);
+  color: var(--text-main);
+  padding: 20px;
+  transition: background 0.3s, color 0.3s;
+}
+
+/* --- Loading Screen --- */
+#loadingScreen {
+  position: fixed; inset: 0; background: #000; z-index: 10000;
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  transition: opacity 0.5s ease;
+}
+.loader-title { font-size: 28px; font-weight: bold; color: #fff; margin-bottom: 20px; }
+.spinner { width: 50px; height: 50px; border: 5px solid #333; border-top: 5px solid var(--accent-blue); border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+.container { max-width: 1300px; margin: 0 auto; background: var(--card-dark); padding: 25px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid var(--border-color); }
+.header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+.asof { font-size: 13px; margin-bottom: 25px; color: #888; border-bottom: 1px solid var(--border-color); padding-bottom: 15px; }
+
+.upload-section { margin-bottom: 20px; background: var(--input-bg); padding: 20px; border-radius: 6px; border: 1px solid var(--border-color); }
+.controls-grid { display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 20px; }
+.upload-section label { font-size: 12px; text-transform: uppercase; color: #aaa; margin-bottom: 8px; display: block; }
+
+select, input[type="file"], #excelPasteBox { background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-main); padding: 8px; border-radius: 4px; }
+#excelPasteBox { width: 100%; height: 100px; color: #00ff41; font-family: 'Courier New', monospace; margin-top: 10px; resize: vertical; box-sizing: border-box;}
+
+.table-wrapper { width: 100%; overflow-x: auto; margin-top: 20px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--table-bg); }
+#mainTable { width: 100%; border-collapse: collapse; color: var(--table-text); }
+#mainTable thead th { background: var(--accent-blue); color: #fff; padding: 12px; font-size: 13px; text-transform: uppercase; cursor: pointer; }
+#mainTable tbody td { padding: 10px; border: 1px solid var(--border-color); font-size: 13px; }
+#mainTable td[contenteditable="true"] { background: rgba(255, 255, 0, 0.1); outline: 2px solid var(--accent-orange); }
+
+button { background: var(--accent-blue); color: white; border: none; padding: 10px 18px; border-radius: 4px; cursor: pointer; font-weight: 600; transition: 0.2s; }
+button:hover { filter: brightness(1.2); }
+.btn-reset { background: var(--accent-red); }
+.btn-edit { background: var(--accent-orange); }
+
+textarea.output-box { width: 100%; height: 120px; background: #000; color: #00ff41; font-family: monospace; margin-top: 5px; padding: 10px; box-sizing: border-box; }
+.output-label { display: block; margin-top: 15px; font-weight: bold; font-size: 11px; color: var(--accent-blue); text-transform: uppercase; }
+
+#previewContainer { position: fixed; top: 100px; right: 50px; width: 500px; height: 400px; background: #fff; border: 3px solid var(--accent-blue); border-radius: 8px; z-index: 9999; display: flex; flex-direction: column; resize: both; overflow: hidden; }
+#previewHeader { background: var(--accent-blue); color: white; padding: 10px; cursor: move; display: flex; justify-content: space-between; }
+#previewBody { flex-grow: 1; padding: 15px; overflow: auto; background: #fff; }
+</style>
+</head>
+
+<body>
+
+<div id="loadingScreen">
+  <div class="loader-title">Manila Times Market Overview Generator</div>
+  <div class="spinner"></div>
+</div>
+
+<div class="container">
+  <div class="header-row">
+    <div class="header-title"><span style="color: var(--accent-red);">MT</span> Market Overview Generator</div>
+    <button onclick="document.body.classList.toggle('light-mode')">Toggle Light/Dark Mode</button>
+  </div>
+  
+  <div class="asof">System Ready | <span id="asOfDate"></span></div>
+
+  <div class="upload-section">
+    <div class="controls-grid">
+      <div>
+        <label>Report Type</label>
+        <select id="dataType" onchange="updateTableHeader()">
+            <option value="TOP ADVANCES">Advances</option>
+            <option value="MOST ACTIVE STOCKS">Most Active</option>
+            <option value="TOP DECLINES">Declines</option>
+            <option value="PSEi & SECTORAL INDICES">Stock Indices</option>
+            <option value="OFFICIAL EXCHANGE RATE">BSP Exchange Rate</option>
+        </select>
+      </div>
+      <div>
+        <label>File Upload</label>
+        <input type="file" id="fileInput" accept=".csv,.xlsx">
+      </div>
+      <div style="margin-left:auto;">
+        <button class="btn-edit" onclick="toggleEdit()">Enable Manual Edit</button>
+        <button class="btn-reset" onclick="resetAll()">Reset All</button>
+      </div>
+    </div>
+    <label>Step 1: Quick Paste</label>
+    <textarea id="excelPasteBox" placeholder="Paste Excel cells here..."></textarea>
+  </div>
+
+  <div class="table-wrapper">
+    <table id="mainTable">
+      <thead id="tableHead"></thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+
+  <div class="action-section" style="margin-top:20px;">
+    <button onclick="generateEmbed()" style="background: var(--accent-green); width:100%; padding:15px;">Step 2: Generate Outputs & Preview</button>
+    
+    <label class="output-label">HTML + Script Code (Paste this in CMS)</label>
+    <textarea id="embedOutput" class="output-box" readonly></textarea>
+    
+    <label class="output-label">CSS Only (Paste in Style section)</label>
+    <textarea id="cssOutput" class="output-box" readonly></textarea>
+  </div>
+</div>
+
+<div id="previewContainer" style="display:none;">
+  <div id="previewHeader"><span>Live Embed Preview</span><span style="cursor:pointer" onclick="document.getElementById('previewContainer').style.display='none'">×</span></div>
+  <div id="previewBody"></div>
+</div>
+
+<script>
+window.addEventListener('load', () => { setTimeout(() => { document.getElementById('loadingScreen').style.opacity = '0'; setTimeout(() => document.getElementById('loadingScreen').style.display = 'none', 500); }, 1000); });
+
+const layouts = {
+    standard: ["Security Name", "Symbol", "Volume", "Value (P)", "Last Price", "Change", "%Change"],
+    active: ["Security Name", "Symbol", "Last Price", "Change", "%Change", "Volume", "Value (P)"],
+    indices: ["Index", "Value", "Change", "% Change"],
+    exchange: ["COUNTRY", "UNIT", "SYMBOL", "EURO EQUIVALENT", "U.S. DOLLAR EQUIVALENT", "PHIL. PESO EQUIVALENT"]
+};
+
+let isEditMode = false;
+
+function updateTableHeader() {
+    const type = document.getElementById("dataType").value;
+    let headerRow = (type === "PSEi & SECTORAL INDICES") ? layouts.indices : (type === "MOST ACTIVE STOCKS" ? layouts.active : (type === "OFFICIAL EXCHANGE RATE" ? layouts.exchange : layouts.standard));
+    let html = "<tr>";
+    headerRow.forEach(h => html += `<th>${h}</th>`);
+    html += "</tr>";
+    document.getElementById("tableHead").innerHTML = html;
+    document.getElementById("tableBody").innerHTML = ""; 
+    isEditMode = false;
+    document.querySelector(".btn-edit").innerText = "Enable Manual Edit";
+}
+
+document.getElementById("asOfDate").innerHTML = new Date().toLocaleString();
+
+function resetAll() {
+    document.getElementById('fileInput').value = "";
+    document.getElementById('excelPasteBox').value = "";
+    document.getElementById("tableBody").innerHTML = "";
+    document.querySelectorAll('textarea.output-box').forEach(t => t.value = "");
+    document.getElementById('previewContainer').style.display = 'none';
+}
+
+function toggleEdit() {
+    isEditMode = !isEditMode;
+    document.querySelectorAll("#tableBody td").forEach(td => td.contentEditable = isEditMode);
+    document.querySelector(".btn-edit").innerText = isEditMode ? "Disable Manual Edit" : "Enable Manual Edit";
+}
+
+document.getElementById('excelPasteBox').addEventListener('paste', function(e) {
+  e.preventDefault();
+  var clipText = (e.clipboardData || window.clipboardData).getData('text');
+  var rows = clipText.split(/\r?\n/).filter(r => r.trim() !== "").map(r => r.split('\t'));
+  populateFromPaste(rows);
+});
+
+function populateFromPaste(data){
+  var tbody = document.getElementById("tableBody");
+  const type = document.getElementById("dataType").value;
+  let colCount = (type === "PSEi & SECTORAL INDICES") ? 4 : (type === "OFFICIAL EXCHANGE RATE" ? 6 : 7);
+  tbody.innerHTML = "";
+  data.forEach(rowData => {
+    if(!rowData[0]) return;
+    var row = `<tr>`;
+    for(let j=0; j<colCount; j++) {
+        let cellData = rowData[j] || "";
+        let cellClass = "";
+        if(type !== "OFFICIAL EXCHANGE RATE") {
+            let isChangeCol = (type === "MOST ACTIVE STOCKS") ? (j === 3 || j === 4) : (j === 5 || j === 6);
+            if(type === "PSEi & SECTORAL INDICES") isChangeCol = (j === 2 || j === 3);
+            if(isChangeCol) {
+                if(String(cellData).includes("-")) cellClass = "mt-down";
+                else if(parseFloat(String(cellData).replace(/,/g, '')) > 0) cellClass = "mt-up";
+            }
+        }
+        row += `<td class="${cellClass}">${cellData}</td>`;
+    }
+    row += "</tr>";
+    tbody.innerHTML += row;
+  });
+}
+
+function generateEmbed(){
+  var tableBody = document.getElementById("tableBody").innerHTML;
+  var tableHead = document.getElementById("tableHead").innerHTML;
+  var typeValue = document.getElementById("dataType").value;
+  var now = new Date();
+
+  var dateFull = now.toLocaleDateString("en-US", {year:"numeric", month:"long", day:"2-digit"});
+  var fixedTime = "03:00 PM"; 
+
+  var footerHTML = "";
+  var displayTypeName = "";
+  
+  var shouldHideArrows = (typeValue === "TOP ADVANCES" || typeValue === "TOP DECLINES" || typeValue === "MOST ACTIVE STOCKS" || typeValue === "PSEi & SECTORAL INDICES");
+
+  if (typeValue === "PSEi & SECTORAL INDICES") {
+      displayTypeName = "Stock Indices";
+      footerHTML = `As of ${dateFull} | ${fixedTime}`;
+  } else if (typeValue === "OFFICIAL EXCHANGE RATE") {
+      displayTypeName = "Exchange Rate";
+      footerHTML = `Source: https://www.bsp.gov.ph/SitePages/Statistics/exchangerate.aspx (as of ${dateFull})`;
+  } else if (typeValue === "MOST ACTIVE STOCKS") {
+      displayTypeName = "Most Active";
+      footerHTML = `*amounts in peso except for volume, %chg<br>Source: https://www.pse.com.ph (as of ${dateFull} | ${fixedTime})`;
+  } else {
+      if(typeValue === "TOP ADVANCES") displayTypeName = "Advances";
+      else if(typeValue === "TOP DECLINES") displayTypeName = "Declines";
+      footerHTML = `*amounts in peso except for volume, %chg<br>Source: https://www.pse.com.ph (as of ${dateFull} | ${fixedTime})`;
+  }
+
+  // Header moved outside the main embed div
+  var headerHTML = `<div class="widget-title-2"><a href="https://www.manilatimes.net/business/market-overview">${displayTypeName}</a></div>`;
+  
+  var cssOnly = `#tm-market-embed{font-family:Arial,sans-serif;width:100%;background:#fff;box-sizing:border-box;margin-bottom:20px;}#tm-market-embed table{width:100%;border-collapse:collapse;font-size:14px;border:2px solid #5f7f99;}#tm-market-embed th{background:#2f6fa5;color:#fff;padding:12px 6px;text-align:center;border:1px solid #4e6f89;text-transform:uppercase;font-size:13px;position:relative;}#tm-market-embed td{padding:10px 6px;border:1px solid #9fb6c9;color:#333;text-align:right;}#tm-market-embed tr:nth-child(odd){background:#e3edf5;}#tm-market-embed tr:nth-child(even){background:#c7d8e6;}#tm-market-embed td:first-child{text-align:left;font-weight:bold;}.mt-up{color:#2e7d32!important;font-weight:bold;}.mt-down{color:#d32f2f!important;font-weight:bold;}#tm-market-embed .footer-source{font-size:14px;color:#000;margin-top:10px;font-style:italic;font-family:"Times New Roman",serif;}#tm-market-embed .widget-title-2{font-size:22px;font-weight:700;margin-bottom:15px;}#tm-market-embed .widget-title-2 a{color:#333;text-decoration:none;}`;
+
+  cssOnly += `#tm-market-embed th:not(.no-sort){cursor:pointer;}#tm-market-embed th:not(.no-sort)::after{content:' ↕';font-size:11px;opacity:0.5;margin-left:5px;}#tm-market-embed th.no-sort{cursor:default;}`;
+
+  var jsOnly = shouldHideArrows ? "" : `(function(){
+    var wrap = document.getElementById('tm-market-embed');
+    if(!wrap) return;
+    var table = wrap.querySelector('table');
+    var headers = table.querySelectorAll('th:not(.no-sort)');
+    var tbody = table.querySelector('tbody');
+    headers.forEach(function(th, idx){
+      th.addEventListener('click', function(){
+        var rows = Array.from(tbody.querySelectorAll('tr'));
+        var isAsc = th.getAttribute('data-sort') === 'asc';
+        rows.sort(function(a, b){
+          var valA = a.children[idx].textContent.trim();
+          var valB = b.children[idx].textContent.trim();
+          var numA = parseFloat(valA.replace(/[^-0-9.]/g, ''));
+          var numB = parseFloat(valB.replace(/[^-0-9.]/g, ''));
+          if(!isNaN(numA) && !isNaN(numB)){
+            return isAsc ? numB - numA : numA - numB;
+          }
+          return isAsc ? valB.localeCompare(valA) : valA.localeCompare(valB);
+        });
+        headers.forEach(function(h){ h.removeAttribute('data-sort'); });
+        th.setAttribute('data-sort', isAsc ? 'desc' : 'asc');
+        rows.forEach(function(row){ tbody.appendChild(row); });
+      });
+    });
+  })();`;
+
+  var finalTableHead = shouldHideArrows ? tableHead.replace(/<th/g, '<th class="no-sort"') : tableHead;
+
+  // Title is now separate from the tm-market-embed wrapper
+  var htmlWithScript = `${headerHTML}\n\n<div id="tm-market-embed"><div style="overflow-x:auto;"><table id="sortableTable"><thead>${finalTableHead}</thead><tbody>${tableBody}</tbody></table></div><div class="footer-source">${footerHTML}</div><script>${jsOnly}<\/script></div>`;
+  
+  document.getElementById("embedOutput").value = htmlWithScript;
+  document.getElementById("cssOutput").value = cssOnly;
+  
+  document.getElementById("previewContainer").style.display = 'flex';
+  document.getElementById("previewBody").innerHTML = `<style>${cssOnly}</style>` + htmlWithScript;
+}
+
+updateTableHeader();
+
+function dragElement(elmnt) {
+  var pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+  if (document.getElementById("previewHeader")) document.getElementById("previewHeader").onmousedown = dragMouseDown;
+  function dragMouseDown(e) { e = e || window.event; e.preventDefault(); pos3 = e.clientX; pos4 = e.clientY; document.onmouseup = closeDragElement; document.onmousemove = elementDrag; }
+  function elementDrag(e) { e = e || window.event; e.preventDefault(); pos1 = pos3 - e.clientX; pos2 = pos4 - e.clientY; pos3 = e.clientX; pos4 = e.clientY; elmnt.style.top = (elmnt.offsetTop - pos2) + "px"; elmnt.style.left = (elmnt.offsetLeft - pos1) + "px"; }
+  function closeDragElement() { document.onmouseup = null; document.onmousemove = null; }
+}
+dragElement(document.getElementById("previewContainer"));
+</script>
+</body>
+</html>

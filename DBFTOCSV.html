@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complete DBF (+ Memo) to CSV Converter</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f6f8;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            width: 450px;
+        }
+        h1 {
+            font-size: 20px;
+            margin-bottom: 20px;
+            color: #333333;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .custom-file-upload {
+            border: 2px dashed #007bff;
+            display: block;
+            padding: 22px 10px;
+            cursor: pointer;
+            border-radius: 6px;
+            color: #007bff;
+            font-weight: bold;
+            transition: background-color 0.2s ease;
+            margin-bottom: 15px;
+        }
+        .custom-file-upload:hover {
+            background-color: #f0f7ff;
+        }
+        .encoding-group {
+            margin-bottom: 15px;
+            text-align: left;
+            font-size: 13px;
+            color: #444;
+        }
+        .encoding-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+        select {
+            width: 100%;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            background-color: #fff;
+            font-size: 14px;
+        }
+        #status {
+            margin-top: 15px;
+            font-size: 13px;
+            color: #555555;
+            word-break: break-all;
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #e9ecef;
+        }
+        .note {
+            font-size: 11px;
+            color: #6c757d;
+            margin-top: 12px;
+            text-align: left;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>DBF / Memo to CSV Converter</h1>
+
+    <div class="encoding-group">
+        <label for="encoding-select">Character Encoding / Code Page:</label>
+        <select id="encoding-select">
+            <option value="auto" selected>Auto-Detect Header Encoding</option>
+            <option value="windows-1252">Windows-1252 (Western European)</option>
+            <option value="cp437">CP437 (MS-DOS Latin US)</option>
+            <option value="cp850">CP850 (MS-DOS Western European)</option>
+            <option value="gbk">GBK / GB2312 (Simplified Chinese)</option>
+            <option value="big5">Big5 (Traditional Chinese)</option>
+            <option value="shift_jis">Shift-JIS (Japanese)</option>
+            <option value="euc-kr">EUC-KR (Korean)</option>
+            <option value="utf-8">UTF-8</option>
+            <option value="windows-1250">Windows-1250 (Central European)</option>
+            <option value="windows-1251">Windows-1251 (Cyrillic)</option>
+        </select>
+    </div>
+
+    <label for="file-upload" class="custom-file-upload">
+        📁 Choose .DBF File (and .FPT/.DBT if available)
+    </label>
+    <!-- Allow selecting multiple files so user can upload .dbf + .fpt together -->
+    <input id="file-upload" type="file" accept=".dbf,.fpt,.dbt" multiple />
+
+    <div id="status">Select your file to begin conversion.</div>
+
+    <div class="note">
+        💡 <b>Address Fields Tip:</b> If addresses show as numbers/symbols, your database uses a Memo file. Select <b>both</b> the <code>.dbf</code> and matching <code>.fpt</code> or <code>.dbt</code> file when uploading!
+    </div>
+</div>
+
+<script>
+    const fileInput = document.getElementById('file-upload');
+    const statusDiv = document.getElementById('status');
+    const encodingSelect = document.getElementById('encoding-select');
+
+    fileInput.addEventListener('change', async function(event) {
+        const files = Array.from(event.target.files);
+        if (!files.length) return;
+
+        const dbfFile = files.find(f => f.name.toLowerCase().endsWith('.dbf'));
+        const memoFile = files.find(f => f.name.toLowerCase().endsWith('.fpt') || f.name.toLowerCase().endsWith('.dbt'));
+
+        if (!dbfFile) {
+            statusDiv.innerText = "Error: Please include a .DBF file.";
+            return;
+        }
+
+        statusDiv.innerText = `Reading file(s)...`;
+
+        try {
+            const dbfBuffer = await readFileAsArrayBuffer(dbfFile);
+            let memoBuffer = null;
+            let isFpt = false;
+
+            if (memoFile) {
+                memoBuffer = await readFileAsArrayBuffer(memoFile);
+                isFpt = memoFile.name.toLowerCase().endsWith('.fpt');
+                statusDiv.innerText = `Loaded DBF and Memo file (${memoFile.name}). Parsing...`;
+            } else {
+                statusDiv.innerText = `Loaded DBF. Parsing...`;
+            }
+
+            const selectedEncoding = encodingSelect.value;
+            const csvData = convertDbfToCsv(dbfBuffer, memoBuffer, isFpt, selectedEncoding);
+
+            const csvFilename = dbfFile.name.replace(/\.[^/.]+$/, "") + ".csv";
+            downloadCSV(csvData, csvFilename);
+
+            statusDiv.innerText = `Success! Generated ${csvFilename}` + 
+                (memoBuffer ? " (with Memo data restored)" : "");
+        } catch (err) {
+            console.error(err);
+            statusDiv.innerText = `Error processing file: ${err.message}`;
+        }
+    });
+
+    function readFileAsArrayBuffer(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(reader.error);
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
+    function getEncodingFromCodePage(codePageByte) {
+        const encodings = {
+            0x01: 'cp437', 0x02: 'cp850', 0x03: 'windows-1252',
+            0x08: 'cp865', 0x09: 'cp860', 0x0B: 'cp855',
+            0x0C: 'cp866', 0x0D: 'cp852', 0x57: 'windows-1252',
+            0x64: 'cp852', 0x78: 'windows-1250', 0x79: 'windows-1251',
+            0x7A: 'windows-1252', 0x7B: 'windows-1253', 0x7C: 'windows-1254'
+        };
+        return encodings[codePageByte] || 'windows-1252';
+    }
+
+    function convertDbfToCsv(dbfBuffer, memoBuffer, isFpt, manualEncoding) {
+        const dataView = new DataView(dbfBuffer);
+
+        const recordCount = dataView.getUint32(4, true);
+        const headerLength = dataView.getUint16(8, true);
+        const recordLength = dataView.getUint16(10, true);
+
+        let encoding = manualEncoding;
+        if (encoding === 'auto') {
+            const codePageByte = dataView.getUint8(29);
+            encoding = getEncodingFromCodePage(codePageByte);
+        }
+
+        let decoder;
+        try {
+            decoder = new TextDecoder(encoding);
+        } catch (e) {
+            decoder = new TextDecoder('windows-1252');
+        }
+
+        // Parse Memo Header Block Size (for FoxPro .FPT files)
+        let memoBlockSize = 512;
+        if (memoBuffer && isFpt && memoBuffer.byteLength >= 512) {
+            const memoView = new DataView(memoBuffer);
+            const customBlockSize = memoView.getUint16(6, false); // Big-endian
+            if (customBlockSize > 0) memoBlockSize = customBlockSize;
+        }
+
+        // Parse Field Descriptors
+        const fields = [];
+        let offset = 32;
+
+        while (offset < headerLength && dataView.getUint8(offset) !== 0x0D) {
+            let fieldNameBytes = new Uint8Array(dbfBuffer, offset, 11);
+            let endOfName = fieldNameBytes.indexOf(0);
+            if (endOfName === -1) endOfName = 11;
+
+            const name = decoder.decode(fieldNameBytes.subarray(0, endOfName)).replace(/[\r\n]+/g, " ").trim();
+            const type = String.fromCharCode(dataView.getUint8(offset + 11));
+            const length = dataView.getUint8(offset + 16);
+
+            fields.push({ name, type, length });
+            offset += 32;
+        }
+
+        const rows = [];
+        const headerRow = fields.map(f => escapeCsvCell(f.name)).join(',');
+        rows.push(headerRow);
+
+        let recordOffset = headerLength;
+
+        for (let r = 0; r < recordCount; r++) {
+            const isDeleted = dataView.getUint8(recordOffset) === 0x2A; // '*'
+
+            if (!isDeleted) {
+                let fieldOffset = recordOffset + 1;
+                const row = [];
+
+                for (let f = 0; f < fields.length; f++) {
+                    const field = fields[f];
+                    let value = "";
+
+                    // Standard Integer
+                    if (field.type === 'I' && field.length === 4) {
+                        value = dataView.getInt32(fieldOffset, true).toString();
+                    } 
+                    // Memo Fields ('M', 'B', 'G', etc.)
+                    else if (field.type === 'M' || field.type === 'B' || field.type === 'F' || field.type === 'G') {
+                        if (memoBuffer) {
+                            value = readMemoContent(dbfBuffer, fieldOffset, field.length, memoBuffer, isFpt, memoBlockSize, decoder);
+                        } else {
+                            value = "[Memo Data - Upload .fpt/.dbt file]";
+                        }
+                    } 
+                    // Standard Character / Numeric / Date fields
+                    else {
+                        const rawBytes = new Uint8Array(dbfBuffer, fieldOffset, field.length);
+                        let rawStr = decoder.decode(rawBytes);
+
+                        // Clean out null bytes and binary control symbols
+                        value = rawStr.replace(/[\x00-\x09\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, "");
+                        value = value.replace(/[\r\n]+/g, " ").trim();
+                    }
+
+                    row.push(escapeCsvCell(value));
+                    fieldOffset += field.length;
+                }
+
+                rows.push(row.join(','));
+            }
+
+            recordOffset += recordLength;
+        }
+
+        return '\uFEFF' + rows.join('\r\n');
+    }
+
+    function readMemoContent(dbfBuffer, fieldOffset, fieldLength, memoBuffer, isFpt, memoBlockSize, decoder) {
+        const rawBytes = new Uint8Array(dbfBuffer, fieldOffset, fieldLength);
+        let pointerStr = new TextDecoder('ascii').decode(rawBytes).trim();
+
+        let blockNum = 0;
+
+        // Visual FoxPro 4-byte Binary Integer Memo pointer
+        if (fieldLength === 4) {
+            const dv = new DataView(dbfBuffer, fieldOffset, 4);
+            blockNum = dv.getUint32(0, true); // Little-endian
+        } else {
+            // ASCII String Memo Pointer
+            blockNum = parseInt(pointerStr, 10);
+        }
+
+        if (isNaN(blockNum) || blockNum <= 0) return "";
+
+        const memoView = new DataView(memoBuffer);
+
+        if (isFpt) {
+            // FoxPro .FPT format
+            const blockOffset = blockNum * memoBlockSize;
+            if (blockOffset + 8 > memoBuffer.byteLength) return "";
+
+            const length = memoView.getUint32(blockOffset + 4, false); // Big-endian
+            if (length <= 0 || blockOffset + 8 + length > memoBuffer.byteLength) return "";
+
+            const bytes = new Uint8Array(memoBuffer, blockOffset + 8, length);
+            let text = decoder.decode(bytes);
+            return text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "").replace(/[\r\n]+/g, " ").trim();
+        } else {
+            // dBase III / IV .DBT format (512-byte blocks)
+            const blockOffset = blockNum * 512;
+            if (blockOffset >= memoBuffer.byteLength) return "";
+
+            let endOffset = blockOffset;
+            const memoBytes = new Uint8Array(memoBuffer);
+
+            // Find 0x1A (EOF marker) or double null
+            while (endOffset < memoBuffer.byteLength && memoBytes[endOffset] !== 0x1A) {
+                endOffset++;
+            }
+
+            const bytes = memoBytes.subarray(blockOffset, endOffset);
+            let text = decoder.decode(bytes);
+            return text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "").replace(/[\r\n]+/g, " ").trim();
+        }
+    }
+
+    function escapeCsvCell(value) {
+        if (value.includes('"') || value.includes(',')) {
+            value = '"' + value.replace(/"/g, '""') + '"';
+        }
+        return value;
+    }
+
+    function downloadCSV(csvContent, filename) {
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        
+        if (navigator.msSaveBlob) {
+            navigator.msSaveBlob(blob, filename);
+        } else {
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', filename);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    }
+</script>
+
+</body>
+</html>

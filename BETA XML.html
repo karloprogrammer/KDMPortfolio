@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manila Times - XML SUITE PRO 3.0 (BETA VERSION) </title>
+    <style>
+        :root { 
+            --primary: #1a1a1a; --accent: #d32f2f; --bg: #f0f2f5; 
+            --success: #27ae60; --error: #e74c3c; --surface: #ffffff;
+            --text: #1a1a1a; --border: #ccc; 
+            --line-hl: rgba(255, 230, 0, 0.4);
+            --text-hl: rgba(231, 76, 60, 0.25);
+            --gutter-bg: #e8e8e8;
+        }
+        body.dark-mode { --bg: #121212; --surface: #1e1e1e; --text: #e0e0e0; --border: #444; --line-hl: rgba(255, 255, 0, 0.15); --gutter-bg: #252525; }
+        
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background-color: var(--bg); margin: 0; padding: 15px; overflow: hidden; height: 100vh; box-sizing: border-box; color: var(--text); transition: background 0.3s; }
+        
+        /* Loading Screen */
+        #loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #1a1a1a; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9999; transition: opacity 0.5s ease; }
+        #loader h1 { color: white; font-size: 1.5rem; letter-spacing: 2px; margin-bottom: 20px; border-bottom: 3px solid var(--accent); padding-bottom: 10px; }
+        .spinner { width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.1); border-top: 4px solid var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* MODAL POPUP STYLES */
+        #downloadModal {
+            display: none;
+            position: fixed;
+            z-index: 10002;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+            backdrop-filter: blur(4px);
+        }
+        .modal-box {
+            background-color: var(--surface);
+            margin: 15vh auto;
+            padding: 30px;
+            border-radius: 12px;
+            width: 400px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            border-top: 5px solid var(--accent);
+            text-align: center;
+        }
+        .modal-box h2 { margin-top: 0; color: var(--accent); font-size: 1.2rem; }
+        .guide-links { display: flex; flex-direction: column; gap: 10px; margin: 20px 0; }
+        .guide-links a {
+            padding: 12px;
+            background: var(--bg);
+            color: var(--accent);
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: bold;
+            border: 1px solid var(--border);
+            transition: 0.2s;
+        }
+        .guide-links a:hover { background: var(--accent); color: white; }
+        .close-btn { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+
+        /* Dropdown Navigation */
+        .nav-dropdown { position: relative; display: inline-block; padding-bottom: 15px; margin-bottom: -15px; }
+        .dropdown-content { 
+            display: none; 
+            position: absolute; 
+            background-color: var(--surface); 
+            min-width: 220px; 
+            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); 
+            z-index: 1001; 
+            border-radius: 8px; 
+            border: 1px solid var(--border); 
+            margin-top: 5px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .dropdown-content button { color: var(--text); padding: 12px 16px; text-decoration: none; display: block; width: 100%; text-align: left; border: none; background: none; border-bottom: 1px solid var(--border); font-size: 0.85rem; cursor: pointer; }
+        .dropdown-content button:hover { background-color: rgba(0,0,0,0.05); }
+        .nav-dropdown:hover .dropdown-content { display: block; opacity: 1; }
+
+        .main-layout { display: flex; gap: 10px; height: calc(100vh - 145px); }
+        .app-wrapper { flex-grow: 1; display: flex; flex-direction: column; gap: 10px; min-width: 0; position: relative; }
+        
+        .sidebar { width: 300px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; transition: width 0.3s ease, margin-right 0.3s ease, opacity 0.3s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .sidebar.collapsed { width: 0; margin-right: -10px; border: none; opacity: 0; }
+        .sidebar-header { background: var(--primary); color: white; padding: 10px; font-size: 0.8rem; font-weight: bold; text-align: center; text-transform: uppercase; cursor: pointer; }
+        
+        .pane-content { flex-grow: 1; overflow-y: auto; padding: 10px; display: none; min-width: 300px; }
+        .pane-content.active { display: block; }
+
+        /* Shortcut Table Style */
+        .shortcut-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; color: var(--text); }
+        .shortcut-table td { padding: 8px; border-bottom: 1px solid var(--border); }
+        .kb-key { background: #444; color: white; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
+
+        .symbol-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .symbol-item { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px 5px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; text-align: center; background: rgba(0,0,0,0.02); transition: 0.2s; }
+        .symbol-item:hover { background: var(--bg); border-color: var(--accent); }
+        .symbol-char { font-weight: bold; color: var(--accent); font-size: 1.2rem; margin-bottom: 4px; }
+
+        .history-item { padding: 8px; border-bottom: 1px solid var(--border); cursor: pointer; display: flex; justify-content: space-between; font-size: 0.75rem; opacity: 0.7; }
+        .history-item.active { border-left: 4px solid var(--accent); background: var(--bg); opacity: 1; font-weight: bold; }
+
+        header { display: flex; justify-content: space-between; align-items: center; background: var(--surface); padding: 10px 20px; border-radius: 8px; border-left: 5px solid var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 10px; }
+        .btn-group { display: flex; gap: 6px; align-items: center; }
+
+        .editor-container { flex-grow: 1; position: relative; background: var(--surface); border-radius: 8px; overflow: hidden; border: 1px solid var(--border); display: flex; }
+        #line-gutter { width: 45px; background: var(--gutter-bg); border-right: 1px solid var(--border); padding: 40px 0; text-align: center; font-family: 'Consolas', monospace; font-size: 14px; color: #888; user-select: none; line-height: 1.8; overflow: hidden; z-index: 4; }
+        .gutter-err { background: var(--error); color: white !important; font-weight: bold; }
+
+        .writing-area { position: relative; flex-grow: 1; overflow: hidden; }
+        #backdrop { position: absolute; top: 0; left: 0; width: 100%; height: 100%; padding: 40px; box-sizing: border-box; font-family: 'Georgia', serif; font-size: 20px; line-height: 1.8; white-space: pre-wrap; word-wrap: break-word; color: transparent; pointer-events: none; z-index: 1; }
+        textarea { position: absolute; top: 0; left: 0; width: 100%; height: 100%; padding: 40px; border: none; font-family: 'Georgia', serif; font-size: 20px; line-height: 1.8; outline: none; resize: none; box-sizing: border-box; background: transparent; color: var(--text); z-index: 2; }
+
+        .error-line { background-color: var(--line-hl); display: inline-block; width: 100%; }
+        .error-text { border-bottom: 3px wavy var(--error); background-color: var(--text-hl); }
+
+        .tag-bar { display: flex; gap: 8px; background: var(--surface); padding: 10px; border-radius: 8px; align-items: center; border: 1px solid var(--border); margin-bottom: 10px; }
+        button { padding: 6px 12px; cursor: pointer; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; font-weight: bold; font-size: 13px; }
+        button:hover { border-color: var(--accent); color: var(--accent); }
+        .btn-main { background: var(--accent); color: white !important; border: none; }
+        
+        #floating-preview { position: absolute; top: 180px; right: 40px; width: 380px; height: 350px; background: #1a1a1a; border-radius: 8px; display: flex; flex-direction: column; z-index: 1000; overflow: hidden; resize: both; border: 1px solid #444; box-shadow: 0 10px 40px rgba(0,0,0,0.6); }
+        #preview-content { flex-grow: 1; padding: 15px; color: #9cdcfe; font-family: 'Consolas', monospace; font-size: 12px; white-space: pre-wrap; overflow: auto; margin: 0; }
+        
+        #tag-counter-ui { background: #222; border-top: 1px solid #444; padding: 8px 15px; display: flex; gap: 15px; font-size: 10px; color: #aaa; }
+        .counter-pill { display: flex; align-items: center; gap: 5px; }
+        .pill-count { color: #fff; font-weight: bold; background: #444; padding: 1px 5px; border-radius: 3px; }
+        .pill-count.err { background: var(--error); }
+
+        #status-bar { padding: 8px; font-size: 11px; color:white; display:flex; gap: 5px; flex-direction: column; }
+        .err-msg { font-size: 10px; font-style: italic; background: rgba(0,0,0,0.2); padding: 4px; border-radius: 3px; }
+
+        .day-chooser { display: flex; gap: 2px; background: #eee; padding: 2px; border-radius: 4px; border: 1px solid var(--border); }
+        .day-btn { padding: 4px 8px; font-size: 10px; border: none; border-radius: 3px; background: transparent; color: #666; cursor: pointer; }
+        .day-btn.active { background: var(--accent); color: white; font-weight: bold; }
+    </style>
+</head>
+<body class="dark-mode">
+
+<div id="loader">
+    <h1>Manila Times XML SUITE PRO 3.0 (BETA VERSION)</h1>
+    <div class="spinner"></div>
+</div>
+
+<div id="downloadModal">
+    <div class="modal-box">
+        <h2>Send Guides Using FileZilla Links:</h2>
+        <div class="guide-links">
+            <a href="#" onclick="return false;">LexisNexis</a>
+            <a href="#" onclick="return false;">Dow Jones New</a>
+            <a href="#" onclick="return false;">Thomson Reuters_new</a>
+        </div>
+        <button class="close-btn" onclick="closeModal()">Close Window</button>
+    </div>
+</div>
+
+<header>
+    <div class="btn-group">
+        <div class="nav-dropdown">
+            <button class="btn-main">☰ Suite Menu</button>
+            <div class="dropdown-content">
+                <button onclick="switchPane('history')">🕒 History Log</button>
+                <button onclick="switchPane('keys')">⌨️ Shortcut Legend</button>
+                <button onclick="switchPane('guides')">🔣 Escape Characters</button>
+                <button onclick="switchPane('settings')">⚙️ Editor Settings</button>
+            </div>
+        </div>
+        <h1 style="margin:0; font-size: 1.1rem; margin-left:10px;">Manila Times <span style="font-weight: 300;">XML SUITE PRO 3.0 (BETA VERSION) </span></h1>
+    </div>
+    
+    <div class="btn-group">
+        <div class="find-replace-bar" style="display: flex; gap: 5px; background: rgba(0,0,0,0.05); padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border);">
+            <input type="text" id="findInput" placeholder="Find word" style="padding: 6px; border-radius: 4px; border: 1px solid var(--border); font-size: 12px; width: 90px; outline: none;">
+            <input type="text" id="replaceInput" placeholder="Replace with" style="padding: 6px; border-radius: 4px; border: 1px solid var(--border); font-size: 12px; width: 90px; outline: none;">
+            <button onclick="runReplace()">Swap</button>
+        </div>
+        <div class="day-chooser">
+            <button id="day-today" class="day-btn" onclick="setDay('today')">TODAY</button>
+            <button id="day-tomorrow" class="day-btn active" onclick="setDay('tomorrow')">TOMORROW</button>
+        </div>
+        <button class="btn-main" onclick="downloadXML()">Download XML</button>
+    </div>
+</header>
+
+<div class="tag-bar">
+    <button onclick="undo()" title="Ctrl + Z">⟲</button>
+    <button onclick="redo()" title="Ctrl + Y">⟳</button>
+    <div style="width:1px; height:20px; background:var(--border); margin:0 5px;"></div>
+    
+    <button onclick="wrapText('story')" title="Shortcut: Alt + S">Story</button>
+    <div style="display:flex; align-items:center; gap:5px;">
+        <input type="date" id="calendarInput" style="padding:3px; font-size:11px; width:110px;" onchange="syncDayChooser()">
+        <button onclick="insertSelectedDate()" title="Shortcut: Alt + D" style="color:var(--accent); border-color: var(--accent);">Date</button>
+    </div>
+    <button onclick="wrapText('headline')" title="Shortcut: Alt + H">Headline</button>
+    <button onclick="wrapText('journalist')" title="Shortcut: Alt + J">Journalist</button>
+    <button onclick="wrapText('article')" title="Shortcut: Alt + A">Article</button>
+
+    <div style="display:flex; gap:2px; border-left:1px solid var(--border); padding-left:8px;">
+        <button style="font-size:10px;" onclick="changeCase('upper')">ABC</button>
+        <button style="font-size:10px;" onclick="changeCase('lower')">abc</button>
+        <button style="font-size:10px;" onclick="changeCase('proper')">Abc</button>
+    </div>
+
+    <button onclick="bulkClean()" title="Shortcut: Alt + C" style="margin-left:auto; background: #27ae60; color: white; border: none;">✨ Bulk Clean</button>
+    <button onclick="clearEditor()">Clear</button>
+</div>
+
+<div class="main-layout">
+    <div class="sidebar collapsed" id="sidebar">
+        <div id="sidebar-title" class="sidebar-header" onclick="toggleSidebar()">HISTORY LOG</div>
+        
+        <div id="pane-history" class="pane-content active">
+            <div id="history-list"></div>
+        </div>
+
+        <div id="pane-keys" class="pane-content">
+            <h3 style="font-size: 0.9rem; margin-bottom: 10px;">Shortcut Keys</h3>
+            <table class="shortcut-table">
+                <tr><td>Wrap Story</td><td><span class="kb-key">Alt</span> + <span class="kb-key">S</span></td></tr>
+                <tr><td>Insert Date</td><td><span class="kb-key">Alt</span> + <span class="kb-key">D</span></td></tr>
+                <tr><td>Wrap Headline</td><td><span class="kb-key">Alt</span> + <span class="kb-key">H</span></td></tr>
+                <tr><td>Wrap Journalist</td><td><span class="kb-key">Alt</span> + <span class="kb-key">J</span></td></tr>
+                <tr><td>Wrap Article</td><td><span class="kb-key">Alt</span> + <span class="kb-key">A</span></td></tr>
+                <tr><td>Bulk Clean</td><td><span class="kb-key">Alt</span> + <span class="kb-key">C</span></td></tr>
+                <tr><td>Undo / Redo</td><td><span class="kb-key">Ctrl</span> + <span class="kb-key">Z / Y</span></td></tr>
+                <tr><td>Download XML</td><td><span class="kb-key">Ctrl</span> + <span class="kb-key">S</span></td></tr>
+            </table>
+        </div>
+
+        <div id="pane-guides" class="pane-content">
+            <div class="symbol-grid">
+                <div class="symbol-item" onclick="copyCode('&amp;amp;')"><span class="symbol-char" style="color:#d32f2f;">&</span><span class="symbol-code">&amp;amp;</span></div>
+                <div class="symbol-item" onclick="copyCode('&amp;quot;')"><span class="symbol-char" style="color:#d32f2f;">"</span><span class="symbol-code">&amp;quot;</span></div>
+                <div class="symbol-item" onclick="copyCode('&amp;apos;')"><span class="symbol-char" style="color:#d32f2f;">'</span><span class="symbol-code">&amp;apos;</span></div>
+                <div class="symbol-item" onclick="copyCode('&#8230;')"><span class="symbol-char" style="color:#d32f2f;">…</span><span class="symbol-code">&#8230;</span></div>
+                <div class="symbol-item" onclick="copyCode('&#8211;')"><span class="symbol-char" style="color:#d32f2f;">–</span><span class="symbol-code">&#8211;</span></div>
+                <div class="symbol-item" onclick="copyCode('&#8212;')"><span class="symbol-char" style="color:#d32f2f;">—</span><span class="symbol-code">&#8212;</span></div>
+                <div class="symbol-item" onclick="copyCode('&#209;')"><span class="symbol-char" style="color:#d32f2f;">Ñ</span><span class="symbol-code">&#209;</span></div>
+                <div class="symbol-item" onclick="copyCode('&#241;')"><span class="symbol-char" style="color:#d32f2f;">ñ</span><span class="symbol-code">&#241;</span></div>
+                <div class="symbol-item" onclick="copyCode('&#8369;')"><span class="symbol-char" style="color:#d32f2f;">₱</span><span class="symbol-code">&#8369;</span></div>
+            </div>
+        </div>
+
+        <div id="pane-settings" class="pane-content">
+            <button onclick="toggleSet('dark-mode')" style="width:100%; margin-bottom:10px;">🌓 Toggle Dark/Light</button>
+            <button onclick="toggleVisual('grid')" style="width:100%; margin-bottom:10px;">▦ Toggle Grid</button>
+        </div>
+    </div>
+
+    <div class="app-wrapper">
+        <div class="editor-container">
+            <div id="grid" style="position: absolute; width: 100%; height: 100%; background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 30px 30px; pointer-events: none; opacity: 0.1; display: none;"></div>
+            <div id="line-gutter">1</div>
+            <div class="writing-area">
+                <div id="backdrop"></div>
+                <textarea id="editor" spellcheck="false" onscroll="syncScroll()" oninput="handleInput()"></textarea>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="floating-preview">
+    <div style="background:#222; padding:8px; cursor:move; color:#777; font-size:9px; text-align:center;" id="drag-handle">DRAG PREVIEW</div>
+    <div id="status-bar" style="background:var(--success);">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span id="status-text">VALID</span>
+        </div>
+        <div id="error-desc" class="err-msg" style="display:none;"></div>
+    </div>
+    <pre id="preview-content"></pre>
+    <div id="tag-counter-ui">
+        <div class="counter-pill">STORY <span class="pill-count" id="count-story">0</span></div>
+        <div class="counter-pill">DATE <span class="pill-count" id="count-date">0</span></div>
+        <div class="counter-pill">HEAD <span class="pill-count" id="count-headline">0</span></div>
+        <div class="counter-pill">ART <span class="pill-count" id="count-article">0</span></div>
+    </div>
+</div>
+
+<script>
+    const editor = document.getElementById('editor');
+    const backdrop = document.getElementById('backdrop');
+    const preview = document.getElementById('preview-content');
+    const gutter = document.getElementById('line-gutter');
+    const historyList = document.getElementById('history-list');
+    const sidebar = document.getElementById('sidebar');
+    const dropdownContent = document.querySelector('.dropdown-content');
+    const modal = document.getElementById('downloadModal');
+
+    let history = [{ val: "", time: new Date().toLocaleTimeString() }];
+    let step = 0;
+    let currentErrorLines = [];
+
+    window.addEventListener('load', () => { 
+        setTimeout(() => {
+            document.getElementById('loader').style.opacity = '0';
+            setTimeout(() => document.getElementById('loader').style.display = 'none', 500);
+        }, 1200);
+        setDay('tomorrow'); 
+        updateLines(); 
+        renderHistory(); 
+    });
+
+    // KEYBOARD SHORTCUTS ENGINE
+    window.addEventListener('keydown', e => {
+        // Standard Undo/Redo
+        if (e.ctrlKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
+        if (e.ctrlKey && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
+        
+        // Ctrl + S to Download
+        if (e.ctrlKey && e.key.toLowerCase() === 's') { e.preventDefault(); downloadXML(); }
+
+        // Alt Shortcuts for Tags
+        if (e.altKey) {
+            const key = e.key.toLowerCase();
+            const actions = {
+                's': () => wrapText('story'),
+                'd': () => insertSelectedDate(),
+                'h': () => wrapText('headline'),
+                'j': () => wrapText('journalist'),
+                'a': () => wrapText('article'),
+                'c': () => bulkClean()
+            };
+            if (actions[key]) {
+                e.preventDefault();
+                actions[key]();
+            }
+        }
+    });
+
+    const dropdown = document.querySelector('.nav-dropdown');
+    let dropdownTimeout;
+
+    dropdown.addEventListener('mouseleave', () => {
+        dropdownTimeout = setTimeout(() => { dropdownContent.style.display = 'none'; }, 500); 
+    });
+
+    dropdown.addEventListener('mouseenter', () => {
+        clearTimeout(dropdownTimeout);
+        dropdownContent.style.display = 'block';
+    });
+
+    function switchPane(paneId) {
+        document.querySelectorAll('.pane-content').forEach(p => p.classList.remove('active'));
+        document.getElementById('pane-' + paneId).classList.add('active');
+        document.getElementById('sidebar-title').innerText = paneId.replace('-', ' ').toUpperCase();
+        sidebar.classList.remove('collapsed');
+        dropdownContent.style.display = 'none'; 
+    }
+
+    function toggleSidebar() { sidebar.classList.toggle('collapsed'); }
+    function closeModal() { modal.style.display = 'none'; }
+
+    function handleInput() { 
+        sync(); updateLines(); updateTagCounter();
+        clearTimeout(window.t); window.t = setTimeout(saveHistory, 300); 
+    }
+
+    function saveHistory() {
+        if (editor.value === history[step].val) return;
+        if (step < history.length - 1) history = history.slice(0, step + 1);
+        history.push({ val: editor.value, time: new Date().toLocaleTimeString() });
+        step++; renderHistory();
+    }
+
+    function renderHistory() {
+        historyList.innerHTML = history.map((item, i) => `
+            <div class="history-item ${i === step ? 'active' : ''}" onclick="jumpToHistory(${i})">
+                <span>Revision ${i}</span><span>${item.time}</span>
+            </div>
+        `).reverse().join('');
+    }
+
+    function jumpToHistory(i) { step = i; editor.value = history[step].val; sync(); updateLines(); updateTagCounter(); renderHistory(); }
+    function undo() { if (step > 0) jumpToHistory(step - 1); }
+    function redo() { if (step < history.length - 1) jumpToHistory(step + 1); }
+
+    function updateTagCounter() {
+        ['story', 'date', 'headline', 'article'].forEach(t => {
+            const count = (editor.value.match(new RegExp(`<${t}>`, 'g')) || []).length;
+            const el = document.getElementById(`count-${t}`);
+            el.innerText = count; el.classList.toggle('err', count !== 1);
+        });
+    }
+
+    function sync() {
+        const val = editor.value;
+        const full = `<?xml version="1.0" encoding="WINDOWS-1250"?>\n<manilatimes>\n${val}\n</manilatimes>`;
+        preview.textContent = full;
+        const p = new DOMParser();
+        const xmlDoc = p.parseFromString(full, "application/xml");
+        const parseErr = xmlDoc.querySelector("parsererror");
+        const errorDesc = document.getElementById('error-desc');
+        currentErrorLines = [];
+        
+        if (parseErr) {
+            document.getElementById('status-bar').style.background = "var(--error)";
+            document.getElementById('status-text').innerText = "ERROR";
+            
+            const errText = parseErr.textContent;
+            const lineMatch = errText.match(/line\s+(\d+)/i);
+            const colMatch = errText.match(/column\s+(\d+)/i);
+            
+            if (lineMatch) {
+                const xmlLine = parseInt(lineMatch[1], 10);
+                const editorLine = xmlLine - 2;
+                if (editorLine > 0) {
+                    currentErrorLines.push(editorLine);
+                }
+                
+                let msg = `Error at line ${editorLine > 0 ? editorLine : 1}`;
+                if (colMatch) msg += `, col ${colMatch[1]}`;
+                errorDesc.innerText = msg;
+                errorDesc.style.display = 'block';
+            } else {
+                errorDesc.innerText = "XML Syntax Error";
+                errorDesc.style.display = 'block';
+            }
+            renderHigh(currentErrorLines);
+        } else {
+            document.getElementById('status-bar').style.background = "var(--success)";
+            document.getElementById('status-text').innerText = "VALID";
+            errorDesc.style.display = 'none';
+            backdrop.innerHTML = val.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+        updateLines();
+    }
+
+    function renderHigh(errLineArr) {
+        const lines = editor.value.split('\n');
+        backdrop.innerHTML = lines.map((c, i) => {
+            let s = c.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") || ' ';
+            return (errLineArr.includes(i + 1)) ? `<span class="error-line"><span class="error-text">${s}</span></span>` : s;
+        }).join('\n');
+    }
+
+    function setDay(type) {
+        const d = new Date(); if(type === 'today') {} else { d.setDate(d.getDate() + 1); }
+        document.getElementById('calendarInput').value = d.toISOString().split('T')[0];
+        document.getElementById('day-today').classList.toggle('active', type === 'today');
+        document.getElementById('day-tomorrow').classList.toggle('active', type === 'tomorrow');
+    }
+
+    function syncDayChooser() {
+        const val = document.getElementById('calendarInput').value;
+        const todayStr = new Date().toISOString().split('T')[0];
+        document.getElementById('day-today').classList.toggle('active', val === todayStr);
+    }
+
+    function toggleVisual(id) { const el = document.getElementById(id); el.style.display = (el.style.display === 'block') ? 'none' : 'block'; }
+    function toggleSet(cls) { document.body.classList.toggle(cls); sync(); }
+    function syncScroll() { backdrop.scrollTop = gutter.scrollTop = editor.scrollTop; backdrop.scrollLeft = editor.scrollLeft; }
+    
+    function updateLines() {
+        const count = editor.value.split('\n').length;
+        gutter.innerHTML = Array.from({length: count}, (_, i) => `<div class="${currentErrorLines.includes(i+1) ? 'gutter-err':''}">${i+1}</div>`).join('');
+    }
+
+    function wrapText(tag) {
+        const s = editor.selectionStart, e = editor.selectionEnd;
+        const selectedText = editor.value.substring(s, e);
+        const formattedText = `<${tag}>\n${selectedText}\n</${tag}>`;
+        editor.setRangeText(formattedText, s, e, 'end');
+        editor.focus();
+        handleInput();
+    }
+
+    function insertSelectedDate() {
+        const v = document.getElementById('calendarInput').value.split('-');
+        if(!v[0]) return;
+        const formattedDate = `<date>\n${v[2]}.${v[1]}.${v[0]}\n</date>`;
+        editor.setRangeText(formattedDate, editor.selectionStart, editor.selectionEnd, 'end');
+        editor.focus();
+        handleInput();
+    }
+
+    function changeCase(type) {
+        const s = editor.selectionStart, e = editor.selectionEnd;
+        let txt = editor.value.substring(s, e);
+        if (type === 'upper') txt = txt.toUpperCase();
+        if (type === 'lower') txt = txt.toLowerCase();
+        if (type === 'proper') txt = txt.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+        editor.setRangeText(txt, s, e, 'end');
+        editor.focus();
+        handleInput();
+    }
+
+    function copyCode(text) { navigator.clipboard.writeText(text); alert("Copied: " + text); }
+
+    function bulkClean() {
+        const loader = document.getElementById('loader');
+        loader.style.display = 'flex';
+        loader.style.opacity = '1';
+
+        setTimeout(() => {
+            const originalText = editor.value;
+            let t = originalText;
+
+            // Normalize curly/smart quotes first (common when pasting text)
+            t = t.replace(/[“”]/g, '&quot;');
+            t = t.replace(/[‘’]/g, '&apos;');
+
+            // Perform character conversions based on TMT XML Escaping Guide
+            t = t.split('–').join('&#8211;');
+            t = t.split('—').join('&#8212;');
+            t = t.split('Ñ').join('&#209;');
+            t = t.split('ñ').join('&#241;');
+            t = t.split('"').join('&quot;');
+            t = t.split("'").join('&apos;');
+            t = t.split('…').join('&#8230;');
+
+            // Escape unescaped ampersands without double-escaping valid XML entities
+            t = t.replace(/&(?!([a-zA-Z0-9]+|#[0-9]+|#x[0-9a-fA-F]+);)/g, '&amp;');
+
+            const isChanged = (t !== originalText);
+
+            if (isChanged) {
+                editor.value = t; 
+                handleInput();
+            }
+
+            loader.style.opacity = '0';
+            setTimeout(() => {
+                loader.style.display = 'none';
+                if (isChanged) {
+                    alert("Code cleaned successfully!");
+                } else {
+                    alert("The code is already cleaned!");
+                }
+            }, 300);
+        }, 100);
+    }
+
+    function runReplace() {
+        const f = document.getElementById('findInput').value;
+        const r = document.getElementById('replaceInput').value;
+        if (!f) return;
+        editor.value = editor.value.split(f).join(r);
+        handleInput();
+    }
+
+    function downloadXML() {
+        const name = document.getElementById('calendarInput').value.split('-').join('') + ".xml";
+        const b = new Blob([preview.textContent], { type: "text/xml" });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; a.click();
+        setTimeout(() => { modal.style.display = 'block'; }, 400);
+    }
+
+    function clearEditor() { if(confirm("Clear All?")) { editor.value = ""; handleInput(); } }
+
+    let drag = false, ox, oy;
+    const float = document.getElementById('floating-preview');
+    document.getElementById('drag-handle').onmousedown = e => { drag = true; ox = e.clientX - float.offsetLeft; oy = e.clientY - float.offsetTop; };
+    document.onmousemove = e => { if (drag) { float.style.left = (e.clientX - ox) + 'px'; float.style.top = (e.clientY - oy) + 'px'; } };
+    document.onmouseup = () => drag = false;
+
+    sync();
+</script>
+</body>
+</html>
